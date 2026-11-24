@@ -121,6 +121,31 @@ svg#map { width: 100%; height: auto; display: block; cursor: crosshair; border-r
 footer { margin-top: 26px; font-size: 15px; color: var(--ink-soft); text-align: center; }
 footer p { margin: 4px 0; }
 
+/* the main action: a large gilt button that is clearly the thing to press */
+#panel-locate { margin: 6px 0 2px; }
+#btn-locate {
+  display: inline-flex; align-items: center; justify-content: center; gap: 12px;
+  min-width: 340px; min-height: 60px; padding: 10px 34px;
+  font-size: 24px; font-weight: 600; letter-spacing: .01em; border-radius: 12px;
+  color: #1a1207;                                   /* dark ink on bright gold: high contrast */
+  background: linear-gradient(180deg, #f0d48a 0%, #d6b15e 50%, #bf973f 100%);
+  border: 1.5px solid #8d6a22;
+  box-shadow: inset 0 1px 0 rgba(255, 248, 220, .8), 0 3px 0 #8d6a22, 0 6px 14px rgba(120, 85, 20, .30);
+  transition: filter .15s, transform .06s, box-shadow .06s;
+}
+#btn-locate svg { width: 26px; height: 26px; flex: none; }
+#btn-locate svg .pin-body { fill: var(--rubric); }
+#btn-locate svg .pin-dot { fill: #f0d48a; }
+#btn-locate:hover { filter: brightness(1.05) saturate(1.05); }
+#btn-locate:active { transform: translateY(3px); box-shadow: inset 0 1px 0 rgba(255, 248, 220, .8), 0 0 0 #8d6a22, 0 2px 6px rgba(120, 85, 20, .25); }
+#btn-locate:focus-visible { outline: 3px solid var(--rubric); outline-offset: 3px; }
+#btn-locate[aria-busy="true"] { filter: saturate(.6); cursor: progress; }
+.cta-note { display: block; text-align: center; font-size: 15px; color: var(--ink-soft); margin-top: 8px; }
+@media (prefers-color-scheme: dark) {
+  #btn-locate { border-color: #a8853f; box-shadow: inset 0 1px 0 rgba(255, 248, 220, .7), 0 3px 0 #6e521a, 0 6px 16px rgba(0, 0, 0, .45); }
+  #btn-locate svg .pin-body { fill: #a3171c; }
+}
+
 /* touch targets everywhere */
 .pill, .btn, select, input[type=text] { min-height: 44px; }
 .pill, .btn, .maphead button, svg#map { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
@@ -142,7 +167,7 @@ footer p { margin: 4px 0; }
   .pill { flex: 1 1 0; font-size: 16px; padding: 4px 6px; white-space: nowrap; }
 
   .panel { gap: 8px; }
-  #panel-locate .btn { width: 100%; }
+  #panel-locate .btn { width: 100%; min-width: 0; font-size: 22px; min-height: 58px; }
   #panel-county select { flex: 1 1 0; min-width: 0; }
   #panel-coords input { flex: 1 1 auto; width: auto; min-width: 0; }
   .hint { font-size: 15px; }
@@ -177,7 +202,10 @@ footer p { margin: 4px 0; }
   </div>
 
   <div class="panel on" id="panel-locate">
-    <button class="btn" id="btn-locate">Find my diocese</button>
+    <button class="btn" id="btn-locate">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="pin-body" d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7z"/><circle class="pin-dot" cx="12" cy="9" r="2.6"/></svg>
+      <span>Find my diocese</span>
+    </button>
   </div>
   <div class="panel" id="panel-county">
     <select id="sel-state" aria-label="State"><option value="">State…</option></select>
@@ -190,7 +218,7 @@ footer p { margin: 4px 0; }
   <p class="hint" id="hint">You can also click anywhere on the map below.</p>
 
   <section class="card" id="result" aria-live="polite">
-    <div class="empty">No location yet.</div>
+    <div class="empty">No location yet. Press <b>Find my diocese</b> above to begin.</div>
   </section>
 
   <section class="card mapcard">
@@ -407,13 +435,17 @@ footer p { margin: 4px 0; }
   // geolocation
   $("btn-locate").addEventListener("click", () => {
     if (!("geolocation" in navigator)) { $("hint").textContent = "This browser has no location service. Pick a county instead."; return; }
-    $("hint").textContent = "Asking your Mac for its location…";
+    const btn = $("btn-locate"), label = btn.querySelector("span");
+    const done = () => { btn.removeAttribute("aria-busy"); label.textContent = "Find my diocese"; };
+    btn.setAttribute("aria-busy", "true"); label.textContent = "Finding you…";
+    $("hint").textContent = "Asking this device for its location…";
     navigator.geolocation.getCurrentPosition(
       pos => {
         const { latitude, longitude, accuracy } = pos.coords;
         $("hint").textContent = accuracy > 25
           ? `Located to within about ${accuracy < 1000 ? Math.round(accuracy) + " m" : (accuracy / 1000).toFixed(1) + " km"}.`
           : "Located.";
+        done();
         resolvePoint(latitude, longitude, "your location");
       },
       err => {
@@ -422,6 +454,7 @@ footer p { margin: 4px 0; }
           2: "Your Mac couldn't work out where it is. With no internet connection this is normal on a desktop Mac; pick a county or enter coordinates instead.",
           3: "Finding your location took too long. Try again, or pick a county.",
         }[err.code] || err.message;
+        done();
         $("hint").textContent = why;
       },
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 10 * 60 * 1000 }
