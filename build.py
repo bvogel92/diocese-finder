@@ -237,6 +237,7 @@ open(os.path.join(SITE, "index.html"), "w", encoding="utf-8").write(html)
 h = hashlib.sha256(html.encode("utf-8"))
 for fn in sorted(os.listdir(os.path.join(HERE, "icons"))) + ["../manifest.webmanifest"]:
     h.update(open(os.path.join(HERE, "icons", fn), "rb").read())
+h.update(open(os.path.join(HERE, "sw.template.js"), "rb").read())
 version = h.hexdigest()[:12]
 sw = open(os.path.join(HERE, "sw.template.js"), encoding="utf-8").read().replace("__VERSION__", version)
 open(os.path.join(SITE, "sw.js"), "w", encoding="utf-8").write(sw)
