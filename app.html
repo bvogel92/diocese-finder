@@ -107,6 +107,8 @@ a.ext { color: var(--rubric); text-decoration: none; }
 a.ext:hover { text-decoration: underline; }
 
 .mapcard { padding: 10px; }
+.hint:empty { min-height: 0; margin: 0; }
+.map-note { margin: 8px 0 4px; text-align: center; font-style: italic; font-size: 16px; color: var(--ink-soft); }
 .maphead { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 10px 8px; gap: 12px; flex-wrap: wrap; }
 .maphead span { font-variant: small-caps; letter-spacing: .1em; color: var(--ink-soft); font-size: 15px; }
 .maphead button { font: inherit; font-size: 15px; background: none; border: 0; color: var(--rubric); cursor: pointer; padding: 0; }
@@ -214,7 +216,7 @@ footer p { margin: 4px 0; }
     <input type="text" id="in-coords" placeholder="39.6092, -85.4464" aria-label="Latitude, longitude">
     <button class="btn" id="btn-coords">Look up</button>
   </div>
-  <p class="hint" id="hint">You can also click anywhere on the map below.</p>
+  <p class="hint" id="hint"></p>
 
   <section class="card" id="result" aria-live="polite">
     <div class="empty">No location yet. Press <b>Find my diocese</b> above to begin.</div>
@@ -226,6 +228,7 @@ footer p { margin: 4px 0; }
       <button id="btn-usa" type="button">Show the whole country</button>
     </div>
     <svg id="map" viewBox="0 0 1000 600" role="img" aria-label="Map of diocese boundaries"></svg>
+    <p class="map-note">You can also click anywhere on the map above.</p>
   </section>
 
   <footer>
@@ -327,14 +330,14 @@ footer p { margin: 4px 0; }
   const USA = [-125, 24.2, -66.5, 49.6];
   let view = null; // {b:[w,s,e,n], k: cos(lat)}
 
-  function setView(b) {
+  function setView(b, fit) {
     const k = Math.cos(((b[1] + b[3]) / 2) * Math.PI / 180);
     const w = (b[2] - b[0]) * k, h = b[3] - b[1];
     // On a phone, use a narrower, taller drawing so the map isn't a thin strip.
     const cw = svg.clientWidth || svg.parentNode.clientWidth || 1000;
     const narrow = cw < 600;
     const W = narrow ? 600 : 1000;
-    const H = narrow ? Math.max(0.8 * W, Math.min(1.15 * W, W * h / w))
+    const H = narrow ? (fit ? W * h / w : Math.max(0.8 * W, Math.min(1.15 * W, W * h / w)))
                      : Math.max(320, Math.min(720, W * h / w));
     view = { u: W / cw }; // drawing units per screen pixel, for text and pin sizes
     const s = Math.min(W / w, H / h) * 0.94;
@@ -367,7 +370,7 @@ footer p { margin: 4px 0; }
       b = USA;
       $("map-caption").textContent = "The United States (lower 48)";
     }
-    setView(b);
+    setView(b, !sel); // whole-country view: no empty space above and below
     svg.replaceChildren();
     const shown = D.dioceses.filter(d => overlaps(d.bbox, b));
     for (const d of shown) {
@@ -427,7 +430,7 @@ footer p { margin: 4px 0; }
   document.querySelectorAll(".pill").forEach(p => p.addEventListener("click", () => {
     document.querySelectorAll(".pill").forEach(q => q.setAttribute("aria-pressed", q === p));
     document.querySelectorAll(".panel").forEach(q => q.classList.toggle("on", q.id === "panel-" + p.dataset.mode));
-    $("hint").textContent = "You can also click anywhere on the map below.";
+    $("hint").textContent = "";
     store.set("mode", p.dataset.mode);
   }));
 
