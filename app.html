@@ -671,6 +671,11 @@ footer p { margin: 4px 0; }
   // When served from a web address, keep a copy on the device so it opens with no signal.
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
+    // When an updated version (e.g. a new bishop list) has just been downloaded, show it right away.
+    if (navigator.serviceWorker.controller) {
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => { if (!reloaded) { reloaded = true; location.reload(); } });
+    }
   }
 })();
 </script>
