@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbf8f1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1917" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Diocese">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<title>Diocese Finder</title>
+<style>
+@font-face { font-family: "EB Garamond"; font-weight: 400; font-style: normal; src: url("fonts/eb-garamond-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "EB Garamond"; font-weight: 600; font-style: normal; src: url("fonts/eb-garamond-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "EB Garamond"; font-weight: 400; font-style: italic; src: url("fonts/eb-garamond-latin-400-italic.woff2") format("woff2"); }
+
+:root {
+  --ink: #111;
+  --ink-soft: #3a3530;
+  --paper: #fbf8f1;
+  --card: #fffdf8;
+  --rubric: #a3171c;
+  --rubric-wash: #f5dcd8;
+  --line: #d9cfbf;
+  --land: #f1ebdf;
+  --gold: #b08a3e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #f3eee4;
+    --ink-soft: #d6cdbd;
+    --paper: #1b1917;
+    --card: #23201d;
+    --rubric: #e0574f;
+    --rubric-wash: #4a2421;
+    --line: #4a443c;
+    --land: #2c2825;
+    --gold: #c9a560;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "EB Garamond", "Hoefler Text", Garamond, Georgia, serif;
+  font-size: 19px;
+  line-height: 1.45;
+}
+.wrap { max-width: 920px; margin: 0 auto; padding: 28px 16px 48px; }
+
+header { text-align: center; margin-bottom: 22px; }
+.eyebrow { font-variant: small-caps; letter-spacing: .14em; color: var(--rubric); font-size: 16px; }
+h1 { font-weight: 400; font-size: 44px; margin: 2px 0 0; letter-spacing: .01em; }
+h1 .initial { color: var(--rubric); font-size: 1.15em; }
+.flourish { color: var(--gold); letter-spacing: .4em; font-size: 14px; margin-top: 4px; }
+
+.pills { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 18px 0 14px; }
+.pill {
+  font: inherit; font-size: 17px; cursor: pointer;
+  border: 1.5px solid var(--rubric); color: var(--rubric); background: transparent;
+  border-radius: 999px; padding: 4px 16px;
+}
+.pill[aria-pressed="true"] { background: var(--rubric); color: var(--paper); }
+.pill:focus-visible, .btn:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+.panel { display: none; justify-content: center; gap: 10px; flex-wrap: wrap; align-items: center; min-height: 44px; }
+.panel.on { display: flex; }
+.btn {
+  font: inherit; font-size: 18px; cursor: pointer;
+  background: var(--rubric); color: var(--paper); border: 0; border-radius: 6px; padding: 7px 18px;
+}
+.btn.ghost { background: transparent; color: var(--rubric); border: 1.5px solid var(--rubric); }
+select, input[type=text] {
+  font: inherit; font-size: 18px; color: var(--ink); background: var(--card);
+  border: 1.5px solid var(--line); border-radius: 6px; padding: 6px 10px; max-width: 100%;
+}
+input[type=text] { width: 260px; }
+.hint { color: var(--ink-soft); font-style: italic; font-size: 16px; text-align: center; margin: 6px 0 0; min-height: 1.4em; }
+
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  margin-top: 20px; padding: 26px 28px 22px; position: relative;
+  box-shadow: 0 1px 0 rgba(0,0,0,.03);
+}
+.card::before {
+  content: ""; position: absolute; inset: 6px; border: 1px solid var(--line); border-radius: 6px; pointer-events: none; opacity: .6;
+}
+.result { display: grid; grid-template-columns: 1fr; gap: 0; text-align: center; }
+.see-label { font-variant: small-caps; letter-spacing: .12em; color: var(--ink-soft); font-size: 16px; }
+.see { font-size: 30px; margin: 0 0 12px; }
+.ordinary-label { font-variant: small-caps; letter-spacing: .12em; color: var(--rubric); font-size: 16px; }
+.ordinary { font-size: 40px; line-height: 1.15; margin: 2px 0 2px; }
+.ordinary .initial { color: var(--rubric); }
+.title { font-style: italic; color: var(--ink-soft); }
+.vacant { font-size: 30px; color: var(--rubric); font-style: italic; }
+.meta { display: flex; justify-content: center; gap: 22px; flex-wrap: wrap; margin-top: 16px; font-size: 17px; }
+.meta dt { font-variant: small-caps; letter-spacing: .1em; color: var(--ink-soft); font-size: 15px; }
+.meta dd { margin: 0; }
+.notice { margin: 16px auto 0; max-width: 620px; font-size: 16px; background: var(--rubric-wash); border-radius: 6px; padding: 8px 14px; }
+.notice:empty { display: none; }
+.empty { text-align: center; color: var(--ink-soft); font-style: italic; padding: 18px 0; }
+a.ext { color: var(--rubric); text-decoration: none; }
+a.ext:hover { text-decoration: underline; }
+
+.mapcard { padding: 10px; }
+.maphead { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 10px 8px; gap: 12px; flex-wrap: wrap; }
+.maphead span { font-variant: small-caps; letter-spacing: .1em; color: var(--ink-soft); font-size: 15px; }
+.maphead button { font: inherit; font-size: 15px; background: none; border: 0; color: var(--rubric); cursor: pointer; padding: 0; }
+svg#map { width: 100%; height: auto; display: block; cursor: crosshair; border-radius: 6px; background: var(--card); }
+#map path { fill: var(--land); stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+#map path:hover { fill: var(--rubric-wash); }
+#map path.sel { fill: var(--rubric-wash); stroke: var(--rubric); stroke-width: 2; }
+#map text { font-family: inherit; fill: var(--ink-soft); pointer-events: none; }
+#map .pin { fill: var(--rubric); stroke: var(--card); stroke-width: 2; vector-effect: non-scaling-stroke; }
+#map .cath { fill: var(--gold); }
+
+footer { margin-top: 26px; font-size: 15px; color: var(--ink-soft); text-align: center; }
+footer p { margin: 4px 0; }
+
+/* touch targets everywhere */
+.pill, .btn, select, input[type=text] { min-height: 44px; }
+.pill, .btn, .maphead button, svg#map { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.maphead button { padding: 10px 0; margin: -10px 0; }
+
+@media (max-width: 560px) {
+  body { font-size: 18px; }
+  .wrap {
+    padding: max(18px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right))
+             max(28px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  }
+  header { margin-bottom: 10px; }
+  .eyebrow { font-size: 14px; }
+  h1 { font-size: 31px; }
+  .flourish { margin-top: 0; }
+
+  /* the three choices sit in one row, sharing the width */
+  .pills { flex-wrap: nowrap; gap: 6px; margin: 14px 0 12px; }
+  .pill { flex: 1 1 0; font-size: 16px; padding: 4px 6px; white-space: nowrap; }
+
+  .panel { gap: 8px; }
+  #panel-locate .btn { width: 100%; }
+  #panel-county select { flex: 1 1 0; min-width: 0; }
+  #panel-coords input { flex: 1 1 auto; width: auto; min-width: 0; }
+  .hint { font-size: 15px; }
+
+  .card { padding: 20px 16px 16px; margin-top: 14px; }
+  .see { font-size: 25px; margin-bottom: 10px; }
+  .ordinary { font-size: 33px; }
+  /* details as a tidy two-column grid */
+  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; text-align: center; }
+  .meta > .wide { grid-column: 1 / -1; }
+  .meta > .province { order: 1; } .meta > .more { order: 2; } .meta > .wide { order: 3; }
+  .notice { font-size: 15px; }
+
+  .mapcard { padding: 6px; }
+  .maphead { padding: 6px 8px 8px; }
+  footer { font-size: 14px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Ecclesiastical Province &amp; See</div>
+    <h1><span class="initial">W</span>ho is the Ordinary here?</h1>
+    <div class="flourish">✠ ❦ ✠</div>
+  </header>
+
+  <div class="pills" role="group" aria-label="How to find your location">
+    <button class="pill" data-mode="locate" aria-pressed="true">My location</button>
+    <button class="pill" data-mode="county" aria-pressed="false">Pick a county</button>
+    <button class="pill" data-mode="coords" aria-pressed="false">Coordinates</button>
+  </div>
+
+  <div class="panel on" id="panel-locate">
+    <button class="btn" id="btn-locate">Find my diocese</button>
+  </div>
+  <div class="panel" id="panel-county">
+    <select id="sel-state" aria-label="State"><option value="">State…</option></select>
+    <select id="sel-county" aria-label="County" disabled><option value="">County…</option></select>
+  </div>
+  <div class="panel" id="panel-coords">
+    <input type="text" id="in-coords" placeholder="39.6092, -85.4464" aria-label="Latitude, longitude">
+    <button class="btn" id="btn-coords">Look up</button>
+  </div>
+  <p class="hint" id="hint">You can also click anywhere on the map below.</p>
+
+  <section class="card" id="result" aria-live="polite">
+    <div class="empty">No location yet.</div>
+  </section>
+
+  <section class="card mapcard">
+    <div class="maphead">
+      <span id="map-caption">The United States</span>
+      <button id="btn-usa" type="button">Show the whole country</button>
+    </div>
+    <svg id="map" viewBox="0 0 1000 600" role="img" aria-label="Map of diocese boundaries"></svg>
+  </section>
+
+  <footer>
+    <p>Works entirely offline. Bishops as of <span id="asof"></span> (Wikipedia). Boundaries: Ken Burchfiel, <i>US Diocese Mapper</i> (CC BY 4.0), built from county lines.</p>
+    <p>Covers the Latin-Church dioceses of the 50 states and the U.S. Virgin Islands. Eastern Catholic eparchies, the Military Archdiocese and the Ordinariate overlap these and are not shown.</p>
+  </footer>
+</div>
+
+<script src="data.js"></script>
+<script>
+(() => {
+  const D = window.DIOCESE_DATA;
+  const byId = Object.fromEntries(D.dioceses.map(d => [d.id, d]));
+  const $ = id => document.getElementById(id);
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+  $("asof").textContent = new Date(D.asOf + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+
+  // ---------- geometry ----------
+  function inRing(lon, lat, ring) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i], [xj, yj] = ring[j];
+      if ((yi > lat) !== (yj > lat) && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  function contains(d, lon, lat) {
+    const b = d.bbox;
+    if (lon < b[0] || lon > b[2] || lat < b[1] || lat > b[3]) return false;
+    for (const poly of d.polys) {
+      if (!inRing(lon, lat, poly[0])) continue;
+      let inHole = false;
+      for (let h = 1; h < poly.length; h++) if (inRing(lon, lat, poly[h])) { inHole = true; break; }
+      if (!inHole) return true;
+    }
+    return false;
+  }
+  function lookup(lat, lon) { return D.dioceses.find(d => contains(d, lon, lat)) || null; }
+  function nearbyBorders(lat, lon, home) {
+    // Sample a ring of points ~3 km away; report any other diocese they fall in.
+    const found = new Set(), dLat = 0.027, dLon = 0.027 / Math.cos(lat * Math.PI / 180);
+    for (let k = 0; k < 12; k++) {
+      const a = k * Math.PI / 6, d = lookup(lat + dLat * Math.sin(a), lon + dLon * Math.cos(a));
+      if (d && d !== home) found.add(d);
+    }
+    return [...found];
+  }
+
+  // ---------- result card ----------
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const wikiUrl = see => "https://en.wikipedia.org/wiki/Roman_Catholic_" + see.replace(/ /g, "_");
+  const shortName = d => d.see.replace(/^(Arch)?[Dd]iocese of /, "");
+
+  function showResult(d, opts = {}) {
+    const el = $("result");
+    if (!d) {
+      el.innerHTML = `<div class="empty">That point is outside the dioceses in this dataset (the 50 states and the U.S. Virgin Islands).</div>`;
+      drawMap(null, opts.point);
+      return;
+    }
+    const first = d.ordinary ? d.ordinary[0] : "";
+    const who = d.vacant
+      ? `<div class="vacant">Sede vacante</div><div class="title">The see is currently vacant</div>`
+      : `<div class="ordinary"><span class="initial">${esc(first)}</span>${esc(d.ordinary.slice(1))}</div><div class="title">${esc(d.title)}</div>`;
+    const cath = d.cathedrals.map(c => esc(c.name)).join("<br>") || "—";
+    let notice = "";
+    if (opts.borders && opts.borders.length)
+      notice = `You are within about 3 km of the boundary with ${opts.borders.map(b => "the " + esc(b.see)).join(" and ")}. These boundaries follow county lines at reduced detail, so check close to the edge.`;
+    else if (opts.splitWith && opts.splitWith.length)
+      notice = `Part of this county belongs to ${opts.splitWith.map(n => byId[n] ? "the " + esc(byId[n].see) : esc(n)).join(" and ")}. Use your location or coordinates for an exact answer.`;
+    el.innerHTML = `
+      <div class="result">
+        <div class="see-label">You are in the</div>
+        <div class="see">${esc(d.see)}</div>
+        <div class="ordinary-label">${d.kind === "Archdiocese" ? "Archbishop" : "Bishop"} &amp; local Ordinary</div>
+        ${who}
+        <dl class="meta">
+          <div class="province"><dt>Province</dt><dd>${esc(d.province)}</dd></div>
+          <div class="wide"><dt>Cathedral</dt><dd>${cath}</dd></div>
+          ${opts.point ? `<div class="wide"><dt>Location</dt><dd>${opts.point[0].toFixed(4)}, ${opts.point[1].toFixed(4)}${opts.source ? ` <span class="title">(${esc(opts.source)})</span>` : ""}</dd></div>` : ""}
+          <div class="more"><dt>More</dt><dd><a class="ext" href="${wikiUrl(d.see)}" target="_blank" rel="noopener">Wikipedia ↗</a></dd></div>
+        </dl>
+        <div class="notice">${notice}</div>
+      </div>`;
+    drawMap(d, opts.point);
+  }
+
+  function resolvePoint(lat, lon, source) {
+    const d = lookup(lat, lon);
+    showResult(d, { point: [lat, lon], source, borders: d ? nearbyBorders(lat, lon, d) : [] });
+    if (d) store.set("lastPoint", { lat, lon, source, t: Date.now() });
+  }
+
+  // ---------- map ----------
+  const svg = $("map"), NS = "http://www.w3.org/2000/svg";
+  const USA = [-125, 24.2, -66.5, 49.6];
+  let view = null; // {b:[w,s,e,n], k: cos(lat)}
+
+  function setView(b) {
+    const k = Math.cos(((b[1] + b[3]) / 2) * Math.PI / 180);
+    const w = (b[2] - b[0]) * k, h = b[3] - b[1];
+    // On a phone, use a narrower, taller drawing so the map isn't a thin strip.
+    const cw = svg.clientWidth || svg.parentNode.clientWidth || 1000;
+    const narrow = cw < 600;
+    const W = narrow ? 600 : 1000;
+    const H = narrow ? Math.max(0.8 * W, Math.min(1.15 * W, W * h / w))
+                     : Math.max(320, Math.min(720, W * h / w));
+    view = { u: W / cw }; // drawing units per screen pixel, for text and pin sizes
+    const s = Math.min(W / w, H / h) * 0.94;
+    const ox = (W - w * s) / 2, oy = (H - h * s) / 2;
+    view = { b, k, s, ox, oy, W, H, u: view.u };
+    svg.setAttribute("viewBox", `0 0 ${W} ${H.toFixed(0)}`);
+  }
+  const px = (lon, lat) => [view.ox + (lon - view.b[0]) * view.k * view.s, view.oy + (view.b[3] - lat) * view.s];
+  const unpx = (x, y) => [view.b[3] - (y - view.oy) / view.s, view.b[0] + (x - view.ox) / (view.k * view.s)];
+
+  function pathFor(d) {
+    let s = "";
+    for (const poly of d.polys) for (const ring of poly) {
+      ring.forEach((c, i) => { const [x, y] = px(c[0], c[1]); s += (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1); });
+      s += "Z";
+    }
+    return s;
+  }
+  const overlaps = (a, b) => !(a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3]);
+
+  let lastDraw = [null, null];
+  function drawMap(sel, point) {
+    lastDraw = [sel, point];
+    let b;
+    if (sel) {
+      const pad = Math.max(sel.bbox[2] - sel.bbox[0], sel.bbox[3] - sel.bbox[1]) * 0.35 + 0.3;
+      b = [sel.bbox[0] - pad, sel.bbox[1] - pad * 0.6, sel.bbox[2] + pad, sel.bbox[3] + pad * 0.6];
+      $("map-caption").textContent = "The " + sel.see + " and its neighbors";
+    } else {
+      b = USA;
+      $("map-caption").textContent = "The United States (lower 48)";
+    }
+    setView(b);
+    svg.replaceChildren();
+    const shown = D.dioceses.filter(d => overlaps(d.bbox, b));
+    for (const d of shown) {
+      const p = document.createElementNS(NS, "path");
+      p.setAttribute("d", pathFor(d));
+      if (d === sel) p.setAttribute("class", "sel");
+      const t = document.createElementNS(NS, "title");
+      t.textContent = d.see + (d.ordinary ? " — " + d.ordinary : " — sede vacante");
+      p.appendChild(t);
+      svg.appendChild(p);
+    }
+    if (sel) {
+      // label neighbours at the centre of their bbox, clipped to view
+      for (const d of shown) {
+        if (d === sel) continue;
+        const cx = (Math.max(d.bbox[0], b[0]) + Math.min(d.bbox[2], b[2])) / 2;
+        const cy = (Math.max(d.bbox[1], b[1]) + Math.min(d.bbox[3], b[3])) / 2;
+        if (!contains(d, cx, cy)) continue;
+        let [x, y] = px(cx, cy);
+        const half = shortName(d).length * 14 * view.u * 0.25 + 4 * view.u; // keep labels inside the frame
+        x = Math.min(Math.max(x, half), view.W - half);
+        const t = document.createElementNS(NS, "text");
+        t.setAttribute("x", x); t.setAttribute("y", y); t.setAttribute("text-anchor", "middle"); t.setAttribute("font-size", (14 * view.u).toFixed(1));
+        t.textContent = shortName(d);
+        svg.appendChild(t);
+      }
+      for (const c of sel.cathedrals) {
+        const [x, y] = px(c.lon, c.lat);
+        const g = document.createElementNS(NS, "text");
+        g.setAttribute("x", x); g.setAttribute("y", y + 6 * view.u); g.setAttribute("text-anchor", "middle");
+        g.setAttribute("font-size", (19 * view.u).toFixed(1)); g.setAttribute("class", "cath"); g.style.fill = "var(--gold)";
+        g.textContent = "✠";
+        svg.appendChild(g);
+      }
+    }
+    if (point) {
+      const [x, y] = px(point[1], point[0]);
+      const c = document.createElementNS(NS, "circle");
+      c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", (7 * view.u).toFixed(1)); c.setAttribute("class", "pin");
+      svg.appendChild(c);
+    }
+  }
+  // Redraw when the phone rotates or the window is resized.
+  let rz;
+  window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => drawMap(...lastDraw), 150); });
+
+  svg.addEventListener("click", e => {
+    const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    const [lat, lon] = unpx(p.x, p.y);
+    resolvePoint(lat, lon, "map click");
+    $("hint").textContent = "Point chosen on the map.";
+  });
+  $("btn-usa").addEventListener("click", () => drawMap(null, null));
+
+  // ---------- modes ----------
+  document.querySelectorAll(".pill").forEach(p => p.addEventListener("click", () => {
+    document.querySelectorAll(".pill").forEach(q => q.setAttribute("aria-pressed", q === p));
+    document.querySelectorAll(".panel").forEach(q => q.classList.toggle("on", q.id === "panel-" + p.dataset.mode));
+    $("hint").textContent = "You can also click anywhere on the map below.";
+    store.set("mode", p.dataset.mode);
+  }));
+
+  // geolocation
+  $("btn-locate").addEventListener("click", () => {
+    if (!("geolocation" in navigator)) { $("hint").textContent = "This browser has no location service. Pick a county instead."; return; }
+    $("hint").textContent = "Asking your Mac for its location…";
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        $("hint").textContent = accuracy > 25
+          ? `Located to within about ${accuracy < 1000 ? Math.round(accuracy) + " m" : (accuracy / 1000).toFixed(1) + " km"}.`
+          : "Located.";
+        resolvePoint(latitude, longitude, "your location");
+      },
+      err => {
+        const why = {
+          1: "Location permission was declined. Allow it for this page in your browser (and in System Settings › Privacy & Security › Location Services), or pick a county.",
+          2: "Your Mac couldn't work out where it is. With no internet connection this is normal on a desktop Mac; pick a county or enter coordinates instead.",
+          3: "Finding your location took too long. Try again, or pick a county.",
+        }[err.code] || err.message;
+        $("hint").textContent = why;
+      },
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 10 * 60 * 1000 }
+    );
+  });
+
+  // county picker
+  const selState = $("sel-state"), selCounty = $("sel-county");
+  for (const st of Object.keys(D.counties)) selState.add(new Option(st, st));
+  selState.addEventListener("change", () => {
+    selCounty.replaceChildren(new Option("County…", ""));
+    (D.counties[selState.value] || []).forEach((c, i) => selCounty.add(new Option(c[0], i)));
+    selCounty.disabled = !selState.value;
+  });
+  selCounty.addEventListener("change", () => {
+    const c = (D.counties[selState.value] || [])[selCounty.value];
+    if (!c) return;
+    showResult(byId[c[1]], { splitWith: c[2] });
+    $("hint").textContent = `${c[0]}, ${selState.value}`;
+    store.set("lastCounty", [selState.value, Number(selCounty.value)]);
+  });
+
+  // coordinates
+  function parseCoords(s) {
+    const m = s.match(/(-?\d+(?:\.\d+)?)\s*°?\s*([NS])?\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*°?\s*([EW])?/i);
+    if (!m) return null;
+    let lat = +m[1], lon = +m[3];
+    if (m[2] && m[2].toUpperCase() === "S") lat = -Math.abs(lat);
+    if (m[4] && m[4].toUpperCase() === "W") lon = -Math.abs(lon);
+    if (lon > 0 && lat > 0 && !m[4]) lon = -lon; // US convenience: assume west
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    return [lat, lon];
+  }
+  const doCoords = () => {
+    const p = parseCoords($("in-coords").value);
+    if (!p) { $("hint").textContent = "Type latitude, longitude, for example 39.6092, -85.4464"; return; }
+    resolvePoint(p[0], p[1], "entered");
+    $("hint").textContent = "";
+  };
+  $("btn-coords").addEventListener("click", doCoords);
+  $("in-coords").addEventListener("keydown", e => { if (e.key === "Enter") doCoords(); });
+
+  // ---------- start ----------
+  const mode = store.get("mode");
+  if (mode) document.querySelector(`.pill[data-mode="${mode}"]`)?.click();
+  const last = store.get("lastPoint");
+  if (last) {
+    resolvePoint(last.lat, last.lon, "last used");
+    $("hint").textContent = "Showing the last location you used.";
+  } else {
+    drawMap(null, null);
+  }
+  window.__finder = { lookup, nearbyBorders, resolvePoint };
+
+  // When served from a web address, keep a copy on the device so it opens with no signal.
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
