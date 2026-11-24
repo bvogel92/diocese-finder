@@ -105,10 +105,111 @@ for r in csv.DictReader(open(os.path.join(SRC, "counties_by_diocese.csv"), encod
 for st in counties:
     counties[st].sort()
 
+# --- states (postal code -> name), from the county table ------------------------
+states = {}
+for r in csv.DictReader(open(os.path.join(SRC, "counties_by_diocese.csv"), encoding="utf-8")):
+    states[r["State_Code"]] = r["State_Name"]
+
+# --- cities, towns, villages, CDPs: U.S. Census Gazetteer place file -------------
+# Uses the newest source/YYYY_Gaz_place_national.txt (drop a newer one in to upgrade).
+place_file = sorted(glob.glob(os.path.join(SRC, "*_Gaz_place_national.txt")))[-1]
+place_year = os.path.basename(place_file)[:4]
+raw = open(place_file, "rb").read()
+try:
+    text = raw.decode("utf-8")
+except UnicodeDecodeError:
+    text = raw.decode("latin-1")
+lines = text.splitlines()
+hdr = [h.strip() for h in lines[0].split("\t")]
+col = {h: i for i, h in enumerate(hdr)}
+TYPE_CODE = {"city": "c", "town": "t", "village": "v", "borough": "b", "CDP": "p"}
+place_rows = []
+for ln in lines[1:]:
+    f = [x.strip() for x in ln.split("\t")]
+    if len(f) < len(hdr) or f[col["USPS"]] not in states:
+        continue  # skips Puerto Rico (no diocese boundaries here)
+    full = re.sub(r"\s*\(.*\)\s*$", "", f[col["NAME"]])          # "Indianapolis city (balance)"
+    m = re.search(r"\s+CDP$", full) or re.search(r"(?:\s+[a-z][a-z\-]*)+$", full)
+    name = full[:m.start()] if m else full
+    kind = TYPE_CODE.get(m.group(0).strip() if m else "", "c")  # "city and borough", "metro government"... are cities
+    place_rows.append([name, f[col["USPS"]], kind, float(f[col["INTPTLAT"]]), float(f[col["INTPTLONG"]]),
+                       float(f[col["ALAND_SQMI"]] or 0)])
+
+# Population (GeoNames, towns of 1,000+) only to put bigger towns first in search results.
+def _fold(x):
+    import unicodedata
+    x = "".join(ch for ch in unicodedata.normalize("NFD", x) if unicodedata.category(ch) != "Mn").lower()
+    return re.sub(r"\s+", " ", re.sub(r"\bsaint\b", "st", x.replace(".", "").replace("'", ""))).strip()
+pop = {}
+for r in csv.DictReader(open(os.path.join(SRC, "geonames_us_cities1000.tsv"), encoding="utf-8"), delimiter="\t"):
+    k = (_fold(r["name"]), r["state"])
+    pop[k] = max(pop.get(k, 0), int(r["population"]))
+for r in place_rows:
+    r.insert(6, pop.get((_fold(r[0]), r[1]), 0))
+
+# Flag the place nearest each cathedral as a see city, so "St. Louis" finds Missouri first.
+import math
+for d in dioceses:
+    see_names = {x.strip().replace("Saint ", "St. ") for x in re.split(r"-| in | and ", d["see"].split(" of ", 1)[-1])}
+    for c in d["cathedrals"]:
+        k = math.cos(math.radians(c["lat"]))
+        named = [r for r in place_rows if r[0] in see_names and abs(r[3] - c["lat"]) < 0.8 and abs(r[4] - c["lon"]) < 1.0]
+        if named:
+            for r in named:
+                if len(r) == 7: r.append("S")
+            continue
+        best = min((r for r in place_rows if abs(r[3] - c["lat"]) < 0.3 and abs(r[4] - c["lon"]) < 0.4 and r[2] != "p"),
+                   key=lambda r: (r[3] - c["lat"]) ** 2 + ((r[4] - c["lon"]) * k) ** 2, default=None)
+        if best is not None and len(best) == 7:
+            best.append("S")
+matched_pop = sum(1 for r in place_rows if r[6])
+place_rows = ["%s\t%s\t%s\t%.4f\t%.4f\t%g\t%d%s" % (r[0], r[1], r[2], r[3], r[4], round(r[5], 1), r[6], "\tS" if len(r) > 7 else "")
+              for r in place_rows]
+
+# --- ZIP codes: Census ZIP Code Tabulation Areas (centre points) -----------------
+zip_file = sorted(glob.glob(os.path.join(SRC, "zcta_*.tsv")))[-1]
+zip_year = re.search(r"zcta_(\d{4})", zip_file).group(1)
+zip_rows = []
+for r in csv.DictReader(open(zip_file, encoding="utf-8"), delimiter="\t"):
+    if r["zcta"][:3] in ("006", "007", "008", "009", "969") or r["zcta"] == "96799":
+        continue  # Puerto Rico, Guam, N. Marianas, American Samoa: no boundaries here
+    zip_rows.append("%s\t%.4f\t%.4f" % (r["zcta"], float(r["lat"]), float(r["lon"])))
+
+# Report how many places/ZIPs fall outside every diocese (should be very few: coastline points)
+def _in_ring(x, y, ring):
+    inside = False
+    j = len(ring) - 1
+    for i in range(len(ring)):
+        xi, yi = ring[i]; xj, yj = ring[j]
+        if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+def _lookup(lat, lon):
+    for d in dioceses:
+        b = d["bbox"]
+        if not (b[0] <= lon <= b[2] and b[1] <= lat <= b[3]):
+            continue
+        for poly in d["polys"]:
+            if _in_ring(lon, lat, poly[0]) and not any(_in_ring(lon, lat, h) for h in poly[1:]):
+                return d["id"]
+    return None
+
+outside_places = [r.split("\t")[0] + ", " + r.split("\t")[1] for r in place_rows
+                  if _lookup(float(r.split("\t")[3]), float(r.split("\t")[4])) is None]
+outside_zips = [r.split("\t")[0] for r in zip_rows
+                if _lookup(float(r.split("\t")[1]), float(r.split("\t")[2])) is None]
+
 out = {
     "asOf": as_of,
     "dioceses": dioceses,
     "counties": dict(sorted(counties.items())),
+    "states": states,
+    "placeYear": place_year,
+    "zipYear": zip_year,
+    "places": "\n".join(place_rows),
+    "zips": "\n".join(zip_rows),
 }
 with open(os.path.join(HERE, "data.js"), "w", encoding="utf-8") as fh:
     fh.write("// Generated by build.py - do not edit by hand\n")
@@ -149,6 +250,8 @@ print("web version written to docs/ (version %s)" % version)
 print(f"bishops as of {as_of}: {len(bishops)} sees")
 print("bundle: %s (%.0f KB)" % (os.path.basename(bundle), os.path.getsize(bundle) / 1024))
 print(f"dioceses with boundaries: {len(dioceses)}")
+print(f"places ({place_year} Census Gazetteer): {len(place_rows)} ({matched_pop} with population); outside every diocese: {len(outside_places)} {outside_places[:12]}")
+print(f"ZIP codes ({zip_year} ZCTAs): {len(zip_rows)}; outside every diocese: {len(outside_zips)} {outside_zips[:20]}")
 print("boundaries with NO bishop match:", missing or "none")
 print("bishop rows with no boundary (expected: Military only):", unused)
 print("data.js size: %.0f KB" % (os.path.getsize(os.path.join(HERE, "data.js")) / 1024))

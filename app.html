@@ -108,6 +108,21 @@ a.ext:hover { text-decoration: underline; }
 
 .mapcard { padding: 10px; }
 .hint:empty { min-height: 0; margin: 0; }
+.search { position: relative; width: 440px; max-width: 100%; }
+.search input { width: 100%; }
+#place-list {
+  position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px 0; list-style: none;
+  background: var(--card); border: 1.5px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  max-height: 60vh; overflow-y: auto; text-align: left;
+}
+#place-list li { padding: 8px 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; min-height: 44px; align-items: center; }
+#place-list li[aria-selected="true"], #place-list li:hover { background: var(--rubric-wash); }
+#place-list .nm { color: var(--ink); }
+#place-list .nm b { font-weight: 600; }
+#place-list .st { color: var(--ink-soft); }
+#place-list .kd { font-variant: small-caps; letter-spacing: .08em; font-size: 14px; color: var(--rubric); white-space: nowrap; }
+#place-list .none { color: var(--ink-soft); font-style: italic; cursor: default; }
+#place-list .none:hover { background: none; }
 .map-note { margin: 8px 0 4px; text-align: center; font-style: italic; font-size: 16px; color: var(--ink-soft); }
 .maphead { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 10px 8px; gap: 12px; flex-wrap: wrap; }
 .maphead span { font-variant: small-caps; letter-spacing: .1em; color: var(--ink-soft); font-size: 15px; }
@@ -169,7 +184,7 @@ footer p { margin: 4px 0; }
 
   .panel { gap: 8px; }
   #panel-locate .btn { width: 100%; min-width: 0; font-size: 22px; min-height: 58px; }
-  #panel-county select { flex: 1 1 0; min-width: 0; }
+  .search { width: 100%; }
   #panel-coords input { flex: 1 1 auto; width: auto; min-width: 0; }
   .hint { font-size: 15px; }
 
@@ -198,7 +213,7 @@ footer p { margin: 4px 0; }
 
   <div class="pills" role="group" aria-label="How to find your location">
     <button class="pill" data-mode="locate" aria-pressed="true">My location</button>
-    <button class="pill" data-mode="county" aria-pressed="false">Pick a county</button>
+    <button class="pill" data-mode="place" aria-pressed="false">Pick a place</button>
     <button class="pill" data-mode="coords" aria-pressed="false">Coordinates</button>
   </div>
 
@@ -208,9 +223,12 @@ footer p { margin: 4px 0; }
       <span>Find my diocese</span>
     </button>
   </div>
-  <div class="panel" id="panel-county">
-    <select id="sel-state" aria-label="State"><option value="">State…</option></select>
-    <select id="sel-county" aria-label="County" disabled><option value="">County…</option></select>
+  <div class="panel" id="panel-place">
+    <div class="search">
+      <input type="text" id="in-place" placeholder="City, town, county or ZIP code" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false"
+             role="combobox" aria-expanded="false" aria-controls="place-list" aria-autocomplete="list" aria-label="City, town, county or ZIP code">
+      <ul id="place-list" role="listbox" hidden></ul>
+    </div>
   </div>
   <div class="panel" id="panel-coords">
     <input type="text" id="in-coords" placeholder="39.6092, -85.4464" aria-label="Latitude, longitude">
@@ -232,7 +250,7 @@ footer p { margin: 4px 0; }
   </section>
 
   <footer>
-    <p>Works entirely offline. Bishops as of <span id="asof"></span> (Wikipedia). Boundaries: Ken Burchfiel, <i>US Diocese Mapper</i> (CC BY 4.0), built from county lines.</p>
+    <p>Works entirely offline. Bishops as of <span id="asof"></span> (Wikipedia). Boundaries: Ken Burchfiel, <i>US Diocese Mapper</i> (CC BY 4.0), built from county lines. Towns and ZIP codes: U.S. Census Bureau Gazetteer (places <span id="place-year"></span>, ZIP code areas <span id="zip-year"></span>).</p>
     <p>Covers the Latin-Church dioceses of the 50 states and the U.S. Virgin Islands. Eastern Catholic eparchies, the Military Archdiocese and the Ordinariate overlap these and are not shown.</p>
   </footer>
 </div>
@@ -247,6 +265,7 @@ footer p { margin: 4px 0; }
     get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
+  $("place-year").textContent = D.placeYear; $("zip-year").textContent = D.zipYear;
   $("asof").textContent = new Date(D.asOf + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
 
   // ---------- geometry ----------
@@ -297,11 +316,16 @@ footer p { margin: 4px 0; }
       ? `<div class="vacant">Sede vacante</div><div class="title">The see is currently vacant</div>`
       : `<div class="ordinary"><span class="initial">${esc(first)}</span>${esc(d.ordinary.slice(1))}</div><div class="title">${esc(d.title)}</div>`;
     const cath = d.cathedrals.map(c => esc(c.name)).join("<br>") || "—";
-    let notice = "";
+    const notes = [];
+    if (opts.nearest)
+      notes.push(`That point lies just outside the boundary lines (on water or the coast), so this is the nearest diocese.`);
     if (opts.borders && opts.borders.length)
-      notice = `You are within about 3 km of the boundary with ${opts.borders.map(b => "the " + esc(b.see)).join(" and ")}. These boundaries follow county lines at reduced detail, so check close to the edge.`;
+      notes.push(`This is within about 3 km of the boundary with ${opts.borders.map(b => "the " + esc(b.see)).join(" and ")}. These boundaries follow county lines at reduced detail, so check close to the edge.`);
     else if (opts.splitWith && opts.splitWith.length)
-      notice = `Part of this county belongs to ${opts.splitWith.map(n => byId[n] ? "the " + esc(byId[n].see) : esc(n)).join(" and ")}. Use your location or coordinates for an exact answer.`;
+      notes.push(`Part of this county belongs to ${opts.splitWith.map(n => byId[n] ? "the " + esc(byId[n].see) : esc(n)).join(" and ")}. Search for the town, or use your location, for an exact answer.`);
+    if (opts.isZip)
+      notes.push(`A ZIP code is matched by the center of its area. A ZIP that crosses a diocesan boundary can belong partly to the neighboring diocese.`);
+    const notice = notes.join("<br>");
     el.innerHTML = `
       <div class="result">
         <div class="see-label">You are in the</div>
@@ -311,7 +335,8 @@ footer p { margin: 4px 0; }
         <dl class="meta">
           <div class="province"><dt>Province</dt><dd>${esc(d.province)}</dd></div>
           <div class="wide"><dt>Cathedral</dt><dd>${cath}</dd></div>
-          ${opts.point ? `<div class="wide"><dt>Location</dt><dd>${opts.point[0].toFixed(4)}, ${opts.point[1].toFixed(4)}${opts.source ? ` <span class="title">(${esc(opts.source)})</span>` : ""}</dd></div>` : ""}
+          ${opts.label ? `<div class="wide"><dt>Place</dt><dd>${esc(opts.label)}</dd></div>`
+            : opts.point ? `<div class="wide"><dt>Location</dt><dd>${opts.point[0].toFixed(4)}, ${opts.point[1].toFixed(4)}${opts.source ? ` <span class="title">(${esc(opts.source)})</span>` : ""}</dd></div>` : ""}
           <div class="more"><dt>More</dt><dd><a class="ext" href="${wikiUrl(d.see)}" target="_blank" rel="noopener">Wikipedia ↗</a></dd></div>
         </dl>
         <div class="notice">${notice}</div>
@@ -319,10 +344,23 @@ footer p { margin: 4px 0; }
     drawMap(d, opts.point);
   }
 
-  function resolvePoint(lat, lon, source) {
-    const d = lookup(lat, lon);
-    showResult(d, { point: [lat, lon], source, borders: d ? nearbyBorders(lat, lon, d) : [] });
-    if (d) store.set("lastPoint", { lat, lon, source, t: Date.now() });
+  function nearestDiocese(lat, lon) {
+    // For a town or ZIP center that sits just off the simplified coastline or on a river.
+    for (const km of [1, 2, 4, 8, 16]) {
+      const dLat = km / 111, dLon = dLat / Math.cos(lat * Math.PI / 180);
+      for (let k = 0; k < 16; k++) {
+        const a = k * Math.PI / 8, d = lookup(lat + dLat * Math.sin(a), lon + dLon * Math.cos(a));
+        if (d) return d;
+      }
+    }
+    return null;
+  }
+
+  function resolvePoint(lat, lon, source, extra = {}) {
+    let d = lookup(lat, lon), nearest = false;
+    if (!d && extra.allowNearest) { d = nearestDiocese(lat, lon); nearest = !!d; }
+    showResult(d, { point: [lat, lon], source, borders: d && !nearest ? nearbyBorders(lat, lon, d) : [], nearest, ...extra });
+    if (d) store.set("lastPoint", { lat, lon, source, label: extra.label || null, isZip: !!extra.isZip, t: Date.now() });
   }
 
   // ---------- map ----------
@@ -427,11 +465,12 @@ footer p { margin: 4px 0; }
   $("btn-usa").addEventListener("click", () => drawMap(null, null));
 
   // ---------- modes ----------
-  document.querySelectorAll(".pill").forEach(p => p.addEventListener("click", () => {
+  document.querySelectorAll(".pill").forEach(p => p.addEventListener("click", e => {
     document.querySelectorAll(".pill").forEach(q => q.setAttribute("aria-pressed", q === p));
     document.querySelectorAll(".panel").forEach(q => q.classList.toggle("on", q.id === "panel-" + p.dataset.mode));
     $("hint").textContent = "";
     store.set("mode", p.dataset.mode);
+    if (p.dataset.mode === "place" && e.isTrusted) setTimeout(() => $("in-place").focus(), 0);
   }));
 
   // geolocation
@@ -448,7 +487,9 @@ footer p { margin: 4px 0; }
           ? `Located to within about ${accuracy < 1000 ? Math.round(accuracy) + " m" : (accuracy / 1000).toFixed(1) + " km"}.`
           : "Located.";
         done();
-        resolvePoint(latitude, longitude, "your location");
+        const near = nearestPlace(latitude, longitude);
+        if (near) store.set("homeState", near.st);
+        resolvePoint(latitude, longitude, "your location", near ? { label: `Near ${near.n}, ${near.sn}` } : {});
       },
       err => {
         const why = {
@@ -463,21 +504,137 @@ footer p { margin: 4px 0; }
     );
   });
 
-  // county picker
-  const selState = $("sel-state"), selCounty = $("sel-county");
-  for (const st of Object.keys(D.counties)) selState.add(new Option(st, st));
-  selState.addEventListener("change", () => {
-    selCounty.replaceChildren(new Option("County…", ""));
-    (D.counties[selState.value] || []).forEach((c, i) => selCounty.add(new Option(c[0], i)));
-    selCounty.disabled = !selState.value;
+  // place search: cities, towns, villages, CDPs (Census Gazetteer), counties, ZIP codes
+  const KIND = { c: "city", t: "town", v: "village", b: "borough", p: "community", o: "place" };
+  const fold = x => x.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[.'’]/g, "").replace(/\bsaint\b/g, "st").replace(/\s+/g, " ").trim();
+  let IDX = null;
+  function buildIndex() {
+    if (IDX) return IDX;
+    const items = [];
+    for (const line of D.places.split("\n")) {
+      const [n, st, k, la, lo, area, pop, see] = line.split("\t");
+      items.push({ n, st, sn: D.states[st], kind: KIND[k] || "place", rank: k === "p" ? 2 : 0, lat: +la, lon: +lo, pop: +pop || 0, size: +area || 0, see: see === "S", f: fold(n) });
+    }
+    const codeOf = Object.fromEntries(Object.entries(D.states).map(([c, n]) => [n, c]));
+    for (const [sn, list] of Object.entries(D.counties)) {
+      list.forEach(c => items.push({ n: c[0], st: codeOf[sn], sn, kind: "county", rank: 1, pop: 0, size: 0, county: c, f: fold(c[0]) }));
+    }
+    const stateWords = {};
+    for (const [c, n] of Object.entries(D.states)) { stateWords[fold(c)] = c; stateWords[fold(n)] = c; }
+    IDX = { items, stateWords, zips: null };
+    return IDX;
+  }
+  function zipList() {
+    if (!IDX.zips) IDX.zips = D.zips.split("\n").map(l => { const [z, la, lo] = l.split("\t"); return { z, lat: +la, lon: +lo }; });
+    return IDX.zips;
+  }
+  function search(q) {
+    const idx = buildIndex();
+    q = q.trim();
+    if (/^\d{3,5}$/.test(q)) {
+      return zipList().filter(z => z.z.startsWith(q)).slice(0, 8).map(z => ({ n: z.z, kind: "ZIP code", zip: z }));
+    }
+    let f = fold(q.replace(/,/g, " , ")), st = null;
+    // "Rushville, IN", "Rushville Indiana", "rushville in"
+    const parts = f.split(" , ").map(x => x.trim()).filter(Boolean);
+    if (parts.length > 1 && idx.stateWords[parts[parts.length - 1]]) { st = idx.stateWords[parts.pop()]; f = parts.join(" "); }
+    else {
+      const w = f.replace(/ , /g, " ").split(" ");
+      for (let k = Math.min(3, w.length - 1); k >= 1 && !st; k--) {
+        const tail = w.slice(-k).join(" ");
+        if (idx.stateWords[tail]) { st = idx.stateWords[tail]; f = w.slice(0, -k).join(" "); }
+      }
+      f = f.replace(/ , /g, " ").trim();
+    }
+    if (f.length < 2) return [];
+    const out = [];
+    for (const it of idx.items) {
+      if (st && it.st !== st) continue;
+      let score = 0;
+      if (it.f === f) score = 4;
+      else if (it.f.startsWith(f)) score = 3;
+      else if (it.f.includes(" " + f) || it.f.includes("-" + f)) score = 2;
+      else continue;
+      out.push([score, it]);
+    }
+    // Same-name places: see cities first (St. Louis, MO), then your own state (Rushville, IN), then
+    // towns before counties before unincorporated communities, then the bigger town.
+    const home = store.get("homeState");
+    const h = it => (it.st === home ? 1 : 0);
+    out.sort((a, b) => b[0] - a[0] || (b[1].see - a[1].see) || h(b[1]) - h(a[1]) || a[1].rank - b[1].rank
+      || b[1].pop - a[1].pop || b[1].size - a[1].size || a[1].n.localeCompare(b[1].n));
+    let top = out.slice(0, 8).map(x => x[1]);
+    // Make sure matching counties are offered too ("Rush" -> Rush County), not crowded out by towns.
+    const counties = out.filter(x => x[1].county).slice(0, 2).map(x => x[1]).filter(c => !top.includes(c));
+    if (counties.length) top = top.filter(x => !x.county).slice(0, 8 - counties.length - top.filter(x => x.county).length).concat(top.filter(x => x.county), counties);
+    return top;
+  }
+
+  function nearestPlace(lat, lon) {
+    const k = Math.cos(lat * Math.PI / 180); let best = null, bd = (25 / 111) ** 2; // within ~25 km
+    for (const it of buildIndex().items) {
+      if (it.county || it.rank === 2) continue;   // prefer real towns for the label
+      const d = (it.lat - lat) ** 2 + ((it.lon - lon) * k) ** 2;
+      if (d < bd) { bd = d; best = it; }
+    }
+    return best;
+  }
+
+  const inPlace = $("in-place"), list = $("place-list");
+  let results = [], active = -1;
+  function renderList() {
+    list.replaceChildren();
+    if (!inPlace.value.trim()) { list.hidden = true; inPlace.setAttribute("aria-expanded", "false"); return; }
+    if (!results.length) {
+      const li = document.createElement("li"); li.className = "none"; li.textContent = "No match. Try the town name, the county, or a 5-digit ZIP code.";
+      list.appendChild(li);
+    }
+    results.forEach((r, i) => {
+      const li = document.createElement("li");
+      li.id = "opt-" + i; li.setAttribute("role", "option"); li.setAttribute("aria-selected", i === active);
+      const where = r.zip ? "" : `, <span class="st">${esc(r.sn)}</span>`;
+      li.innerHTML = `<span class="nm"><b>${esc(r.n)}</b>${where}</span><span class="kd">${esc(r.kind)}</span>`;
+      li.addEventListener("mousedown", e => { e.preventDefault(); choose(i); });
+      list.appendChild(li);
+    });
+    list.hidden = false; inPlace.setAttribute("aria-expanded", "true");
+    if (active >= 0) { inPlace.setAttribute("aria-activedescendant", "opt-" + active); $("opt-" + active)?.scrollIntoView({ block: "nearest" }); }
+    else inPlace.removeAttribute("aria-activedescendant");
+  }
+  function choose(i) {
+    const r = results[i];
+    if (!r) return;
+    list.hidden = true; inPlace.setAttribute("aria-expanded", "false");
+    if (r.zip) {
+      inPlace.value = r.n;
+      resolvePoint(r.zip.lat, r.zip.lon, "ZIP " + r.n, { label: "ZIP code " + r.n, isZip: true, allowNearest: true });
+    } else if (r.county) {
+      inPlace.value = `${r.n}, ${r.sn}`;
+      store.set("homeState", r.st);
+      showResult(byId[r.county[1]], { splitWith: r.county[2], label: `${r.n}, ${r.sn}` });
+      store.set("lastPoint", null);
+    } else {
+      inPlace.value = `${r.n}, ${r.sn}`;
+      store.set("homeState", r.st);
+      resolvePoint(r.lat, r.lon, `${r.n}, ${r.st}`, { label: `${r.n}, ${r.sn}`, allowNearest: true });
+    }
+    $("hint").textContent = "";
+    inPlace.blur();
+  }
+  let t;
+  inPlace.addEventListener("input", () => {
+    clearTimeout(t);
+    t = setTimeout(() => { results = search(inPlace.value); active = results.length ? 0 : -1; renderList(); }, 60);
   });
-  selCounty.addEventListener("change", () => {
-    const c = (D.counties[selState.value] || [])[selCounty.value];
-    if (!c) return;
-    showResult(byId[c[1]], { splitWith: c[2] });
-    $("hint").textContent = `${c[0]}, ${selState.value}`;
-    store.set("lastCounty", [selState.value, Number(selCounty.value)]);
+  inPlace.addEventListener("keydown", e => {
+    if (list.hidden && e.key === "ArrowDown") { results = search(inPlace.value); active = 0; renderList(); e.preventDefault(); return; }
+    if (e.key === "ArrowDown") { active = Math.min(results.length - 1, active + 1); renderList(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { active = Math.max(0, active - 1); renderList(); e.preventDefault(); }
+    else if (e.key === "Enter") { if (results.length) choose(Math.max(0, active)); e.preventDefault(); }
+    else if (e.key === "Escape") { list.hidden = true; inPlace.setAttribute("aria-expanded", "false"); }
   });
+  inPlace.addEventListener("focus", () => { inPlace.select(); buildIndex(); });
+  inPlace.addEventListener("blur", () => setTimeout(() => { list.hidden = true; inPlace.setAttribute("aria-expanded", "false"); }, 120));
 
   // coordinates
   function parseCoords(s) {
@@ -504,7 +661,7 @@ footer p { margin: 4px 0; }
   if (mode) document.querySelector(`.pill[data-mode="${mode}"]`)?.click();
   const last = store.get("lastPoint");
   if (last) {
-    resolvePoint(last.lat, last.lon, "last used");
+    resolvePoint(last.lat, last.lon, "last used", last.label ? { label: last.label, isZip: last.isZip, allowNearest: true } : {});
     $("hint").textContent = "Showing the last location you used.";
   } else {
     drawMap(null, null);
