@@ -311,10 +311,10 @@ svg#map { -webkit-tap-highlight-color: transparent; }
     }
     return inside;
   }
-  function contains(d, lon, lat) {
+  function contains(d, lon, lat, water) {
     const b = d.bbox;
     if (lon < b[0] || lon > b[2] || lat < b[1] || lat > b[3]) return false;
-    for (const poly of d.polys) {
+    for (const poly of (water ? d.wpolys : d.polys)) {
       if (!inRing(lon, lat, poly[0])) continue;
       let inHole = false;
       for (let h = 1; h < poly.length; h++) if (inRing(lon, lat, poly[h])) { inHole = true; break; }
@@ -322,7 +322,10 @@ svg#map { -webkit-tap-highlight-color: transparent; }
     }
     return false;
   }
-  function lookup(lat, lon) { return D.dioceses.find(d => contains(d, lon, lat)) || null; }
+  // Land first; then the lakes and bays each diocese also covers (they are not drawn).
+  function lookup(lat, lon) {
+    return D.dioceses.find(d => contains(d, lon, lat)) || D.dioceses.find(d => d.wpolys.length && contains(d, lon, lat, true)) || null;
+  }
   function nearbyBorders(lat, lon, home) {
     // Sample a ring of points ~3 km away; report any other diocese they fall in.
     const found = new Set(), dLat = 0.027, dLon = 0.027 / Math.cos(lat * Math.PI / 180);

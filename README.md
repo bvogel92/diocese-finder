@@ -21,6 +21,9 @@ Open https://diocese.bobbyvogel.com once with a signal, then add it to the Home 
 ## Update the town list
 Towns come from the newest `source/YYYY_Gaz_place_national.txt` (Census Gazetteer "Places" file). This copy is the 2016 file. To use a newer one, download it from census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html, unzip it into `source/`, and run `python3 build.py`.
 
+## Lakes and bays
+Diocese outlines are built from county shapes, which run out over the Great Lakes, Chesapeake Bay, Puget Sound and so on. `make_water_cut.py` cuts that water out (using Natural Earth's 1:10m ocean, lake and minor-island outlines, public domain) and saves `source/diocese_boundaries_water_cut.geojson`, which `build.py` uses. The water is still counted as part of its diocese for lookups; it just isn't drawn. You only need to rerun it if the boundary file changes: download `ne_10m_ocean`, `ne_10m_lakes` and `ne_10m_minor_islands` (GeoJSON) from naturalearthdata.com into `source/`, then `pip install shapely` and `python3 make_water_cut.py`.
+
 ## Update the bishops
 Bishops come from Wikipedia's *List of Catholic bishops in the United States*, saved on 23 Nov 2026 in `source/bishops_wikipedia_2026-11-23.tsv` (one row per see: province, see, ordinary, title; `Sede vacante` for vacant sees).
 To update: edit that file (or save a newer `bishops_YYYY-MM-DD.tsv` beside it), then run `python3 build.py`. That rebuilds `Diocese Finder.html` and the web version in `docs/` (commit and push to publish; phones update the next time they open it online), and reports any see that fails to match a boundary.
@@ -31,6 +34,7 @@ To update: edit that file (or save a newer `bishops_YYYY-MM-DD.tsv` beside it), 
 - Towns, villages and Census-designated places: U.S. Census Bureau Gazetteer, places, 2016 (public domain).
 - ZIP codes: U.S. Census Bureau ZIP Code Tabulation Areas, 2022, via the `us-zips` package (MIT). ZIP points are the center of each ZIP area.
 - Town populations (used only to list bigger towns first): GeoNames, via the `geonamescache` package (CC BY 4.0 / MIT).
+- Lakes, bays and coastline: Natural Earth 1:10m (public domain).
 - Font: EB Garamond (SIL Open Font License, `fonts/OFL-LICENSE.txt`).
 
 ## Not covered

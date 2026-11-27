@@ -58,7 +58,9 @@ for r in csv.DictReader(open(os.path.join(SRC, "diocese_province_cathedral_list_
     cathedrals[r["Diocese"]] = [{"name": n, "lat": c[0], "lon": c[1]} for n, c in zip(names, coords)]
 
 # --- boundaries ------------------------------------------------------------------
-gj = json.load(open(os.path.join(SRC, "diocese_boundaries_revised.geojson"), encoding="utf-8"))
+# Uses the version with lakes and bays cut out (make_water_cut.py) when it exists.
+_cut = os.path.join(SRC, "diocese_boundaries_water_cut.geojson")
+gj = json.load(open(_cut if os.path.exists(_cut) else os.path.join(SRC, "diocese_boundaries_revised.geojson"), encoding="utf-8"))
 
 def rnd(c):
     if isinstance(c[0], (int, float)):
@@ -81,6 +83,11 @@ for f in gj["features"]:
     g = f["geometry"]
     polys = g["coordinates"] if g["type"] == "MultiPolygon" else [g["coordinates"]]
     polys = rnd(polys)
+    wg = f["properties"].get("water")
+    wpolys = []
+    if wg:
+        wpolys = wg["coordinates"] if wg["type"] == "MultiPolygon" else [wg["coordinates"]]
+        wpolys = [[[[round(x, 3), round(y, 3)] for x, y in ring] for ring in poly] for poly in wpolys]
     b = bishops.get(name)
     if not b:
         missing.append(name)
@@ -90,8 +97,9 @@ for f in gj["features"]:
         "id": name,
         **b,
         "cathedrals": cathedrals.get(name, []),
-        "bbox": [round(v, 4) for v in bbox(polys)],
+        "bbox": [round(v, 4) for v in bbox(polys + wpolys)],
         "polys": polys,
+        "wpolys": wpolys,      # water inside the diocese: used for lookups, not drawn
     })
 
 unused = sorted(set(bishops) - {d["id"] for d in dioceses})
@@ -191,7 +199,7 @@ def _lookup(lat, lon):
         b = d["bbox"]
         if not (b[0] <= lon <= b[2] and b[1] <= lat <= b[3]):
             continue
-        for poly in d["polys"]:
+        for poly in d["polys"] + d["wpolys"]:
             if _in_ring(lon, lat, poly[0]) and not any(_in_ring(lon, lat, h) for h in poly[1:]):
                 return d["id"]
     return None
