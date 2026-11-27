@@ -11,6 +11,8 @@ Double-click **Diocese Finder.html**. Three ways to choose a place:
 
 The last location you used is remembered and shown on the next launch.
 
+**The map** moves and zooms. On a Mac: drag to move, pinch on the trackpad (or hold ⌘ and scroll) to zoom, double-click to zoom in. On a phone: two fingers move and pinch the map (one finger still scrolls the page). The + / − / ⊙ buttons zoom and re-center. Town names appear as you zoom in. Alaska, Hawaii and the Virgin Islands are shown in inset boxes, as on a printed map.
+
 If your browser won't give location to a file opened from disk, double-click **start.command** instead (serves it at http://localhost:8765). Safari blocks this more often than Chrome does.
 
 ## On a phone

@@ -1,7 +1,7 @@
 // Diocese Finder service worker: keeps the whole app on the device so it opens offline.
 // The version below changes automatically whenever build.py produces a new index.html,
 // so phones pick up updated bishop lists the next time they open the app with a signal.
-const VERSION = "8628213415d5";
+const VERSION = "9ee20afddc28";
 const CACHE = "diocese-finder-" + VERSION;
 const FILES = ["./", "./index.html", "./manifest.webmanifest",
   "./icons/icon-180.png", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png"];

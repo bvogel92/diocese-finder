@@ -127,9 +127,31 @@ a.ext:hover { text-decoration: underline; }
 .maphead { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 10px 8px; gap: 12px; flex-wrap: wrap; }
 .maphead span { font-variant: small-caps; letter-spacing: .1em; color: var(--ink-soft); font-size: 15px; }
 .maphead button { font: inherit; font-size: 15px; background: none; border: 0; color: var(--rubric); cursor: pointer; padding: 0; }
-svg#map { width: 100%; height: auto; display: block; cursor: crosshair; border-radius: 6px; background: var(--card); }
+.mapbox { position: relative; border-radius: 6px; overflow: hidden; }
+svg#map { width: 100%; height: clamp(300px, 58vh, 560px); display: block; cursor: crosshair; background: var(--card);
+  touch-action: pan-x pan-y; user-select: none; -webkit-user-select: none; }
+svg#map.dragging { cursor: grabbing; }
+#map .town { fill: var(--ink-soft); }
+#map .inset { fill: none; stroke: var(--line); stroke-width: 1.25; vector-effect: non-scaling-stroke; pointer-events: none; }
+#map .inset-label { fill: var(--ink-soft); font-variant: small-caps; letter-spacing: .08em; }
+#map .town-dot { fill: var(--gold); }
+#map .dio-label { fill: var(--ink-soft); }
+.mapctl { position: absolute; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
+.mapctl button {
+  width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--card); color: var(--ink);
+  font: 600 24px/1 "EB Garamond", Georgia, serif; cursor: pointer; display: grid; place-items: center; padding: 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,.15); -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.mapctl button:hover { border-color: var(--rubric); color: var(--rubric); }
+.mapctl button svg { width: 22px; height: 22px; }
+.maphint {
+  position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+  background: rgba(0,0,0,.45); color: #fff; font-size: 20px; text-align: center; padding: 20px;
+  opacity: 0; transition: opacity .25s;
+}
+.maphint.on { opacity: 1; }
 #map path { fill: var(--land); stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
-#map path:hover { fill: var(--rubric-wash); }
+@media (hover: hover) { #map path:hover { fill: var(--rubric-wash); } }
 #map path.sel { fill: var(--rubric-wash); stroke: var(--rubric); stroke-width: 2; }
 #map text { font-family: inherit; fill: var(--ink-soft); pointer-events: none; }
 #map .pin { fill: var(--rubric); stroke: var(--card); stroke-width: 2; vector-effect: non-scaling-stroke; }
@@ -164,7 +186,8 @@ footer p { margin: 4px 0; }
 
 /* touch targets everywhere */
 .pill, .btn, select, input[type=text] { min-height: 44px; }
-.pill, .btn, .maphead button, svg#map { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.pill, .btn, .maphead button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+svg#map { -webkit-tap-highlight-color: transparent; }
 .maphead button { padding: 10px 0; margin: -10px 0; }
 
 @media (max-width: 560px) {
@@ -198,6 +221,7 @@ footer p { margin: 4px 0; }
   .notice { font-size: 15px; }
 
   .mapcard { padding: 6px; }
+  svg#map { height: clamp(300px, 100vw, 460px); }
   .maphead { padding: 6px 8px 8px; }
   footer { font-size: 14px; }
 }
@@ -245,7 +269,17 @@ footer p { margin: 4px 0; }
       <span id="map-caption">The United States</span>
       <button id="btn-usa" type="button">Show the whole country</button>
     </div>
-    <svg id="map" viewBox="0 0 1000 600" role="img" aria-label="Map of diocese boundaries"></svg>
+    <div class="mapbox" id="mapbox">
+      <svg id="map" viewBox="0 0 1000 600" role="img" aria-label="Map of diocese boundaries"></svg>
+      <div class="mapctl" role="group" aria-label="Map controls">
+        <button type="button" id="z-in" aria-label="Zoom in">+</button>
+        <button type="button" id="z-out" aria-label="Zoom out">−</button>
+        <button type="button" id="z-fit" aria-label="Re-center the map">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4" stroke="currentColor" stroke-width="2"/></svg>
+        </button>
+      </div>
+      <div class="maphint" id="maphint" aria-live="polite"></div>
+    </div>
     <p class="map-note">You can also click anywhere on the map above.</p>
   </section>
 
@@ -341,7 +375,7 @@ footer p { margin: 4px 0; }
         </dl>
         <div class="notice">${notice}</div>
       </div>`;
-    drawMap(d, opts.point);
+    drawMap(d, opts.point, opts.keepView);
   }
 
   function nearestDiocese(lat, lon) {
@@ -364,105 +398,285 @@ footer p { margin: 4px 0; }
   }
 
   // ---------- map ----------
+  // Everything is drawn once in "world" units (x = longitude × cos 39°, y = −latitude);
+  // moving and zooming just changes the SVG viewBox, so it stays fast and needs no map tiles.
+  // Alaska, Hawaii and the Virgin Islands are moved into inset boxes below the lower 48, as on
+  // a printed map; proj()/unproj() do that move, so clicks, pins and town names land correctly.
   const svg = $("map"), NS = "http://www.w3.org/2000/svg";
-  const USA = [-125, 24.2, -66.5, 49.6];
-  let view = null; // {b:[w,s,e,n], k: cos(lat)}
-
-  function setView(b, fit) {
-    const k = Math.cos(((b[1] + b[3]) / 2) * Math.PI / 180);
-    const w = (b[2] - b[0]) * k, h = b[3] - b[1];
-    // On a phone, use a narrower, taller drawing so the map isn't a thin strip.
-    const cw = svg.clientWidth || svg.parentNode.clientWidth || 1000;
-    const narrow = cw < 600;
-    const W = narrow ? 600 : 1000;
-    const H = narrow ? (fit ? W * h / w : Math.max(0.8 * W, Math.min(1.15 * W, W * h / w)))
-                     : Math.max(320, Math.min(720, W * h / w));
-    view = { u: W / cw }; // drawing units per screen pixel, for text and pin sizes
-    const s = Math.min(W / w, H / h) * 0.94;
-    const ox = (W - w * s) / 2, oy = (H - h * s) / 2;
-    view = { b, k, s, ox, oy, W, H, u: view.u };
-    svg.setAttribute("viewBox", `0 0 ${W} ${H.toFixed(0)}`);
+  const K = Math.cos(39 * Math.PI / 180);
+  const INSETS = [
+    { name: "Alaska", test: (lon, lat) => lat > 50 && (lon < -129 || lon > 170), norm: lon => lon > 0 ? lon - 360 : lon,
+      lon0: -159, lat0: 61.3, k: Math.cos(62 * Math.PI / 180), sc: 0.36, ox: -93, oy: -27.2 },
+    { name: "Hawaii", test: (lon, lat) => lat < 30 && lon < -150, norm: lon => lon,
+      lon0: -157.65, lat0: 20.6, k: Math.cos(20.6 * Math.PI / 180), sc: 1, ox: -83.2, oy: -25.6 },
+    { name: "Virgin Islands", short: "USVI", test: (lon, lat) => lat > 17 && lat < 19 && lon > -65.5 && lon < -64, norm: lon => lon,
+      lon0: -64.83, lat0: 18.04, k: Math.cos(18 * Math.PI / 180), sc: 3, ox: -58.2, oy: -25.6, minW: 3.6 },
+  ];
+  function proj(lon, lat) {
+    for (const a of INSETS) if (a.test(lon, lat))
+      return [a.ox + (a.norm(lon) - a.lon0) * a.k * a.sc, a.oy - (lat - a.lat0) * a.sc];
+    return [lon * K, -lat];
   }
-  const px = (lon, lat) => [view.ox + (lon - view.b[0]) * view.k * view.s, view.oy + (view.b[3] - lat) * view.s];
-  const unpx = (x, y) => [view.b[3] - (y - view.oy) / view.s, view.b[0] + (x - view.ox) / (view.k * view.s)];
-
-  function pathFor(d) {
-    let s = "";
-    for (const poly of d.polys) for (const ring of poly) {
-      ring.forEach((c, i) => { const [x, y] = px(c[0], c[1]); s += (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1); });
-      s += "Z";
+  function unproj(x, y) {
+    for (const a of INSETS) if (a.box && x >= a.box[0] && x <= a.box[2] && y >= a.box[1] && y <= a.box[3]) {
+      let lon = a.lon0 + (x - a.ox) / (a.k * a.sc); if (lon < -180) lon += 360;
+      return [lon, a.lat0 - (y - a.oy) / a.sc];
     }
-    return s;
+    return [x / K, -y];
   }
-  const overlaps = (a, b) => !(a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3]);
+  let USA = null; // world box of the whole map, set once the insets are measured
+  const MIN_S = 0.0006, MAX_S = 0.3;           // world units per screen pixel (≈65 m … whole country)
+  let view = { cx: -95.5 * K, cy: -37, s: 0.06 }; // centre (world units) and scale (world units per pixel)
+  let cur = { sel: null, point: null };
+  const layers = {};
 
-  let lastDraw = [null, null];
-  function drawMap(sel, point) {
-    lastDraw = [sel, point];
-    let b;
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function labelPoint(d) {
+    // A point inside the diocese for its name: bbox centre if inside, else the middle of its widest row.
+    const cx = (d.bbox[0] + d.bbox[2]) / 2, cy = (d.bbox[1] + d.bbox[3]) / 2;
+    if (contains(d, cx, cy)) return [cx, cy];
+    for (const f of [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8]) {
+      const y = d.bbox[1] + (d.bbox[3] - d.bbox[1]) * f;
+      let best = null;
+      for (let i = 1; i < 40; i++) { const x = d.bbox[0] + (d.bbox[2] - d.bbox[0]) * i / 40; if (contains(d, x, y)) { best = best || [x, x]; best[1] = x; } }
+      if (best) return [(best[0] + best[1]) / 2, y];
+    }
+    return [d.polys[0][0][0][0], d.polys[0][0][0][1]];
+  }
+  function buildMap() {
+    if (layers.land) return;
+    layers.frames = el("g", {}, svg);
+    layers.land = el("g", {}, svg);
+    const grow = (b, x, y) => { b[0] = Math.min(b[0], x); b[1] = Math.min(b[1], y); b[2] = Math.max(b[2], x); b[3] = Math.max(b[3], y); };
+    for (const d of D.dioceses) {
+      let path = ""; const wb = [Infinity, Infinity, -Infinity, -Infinity];
+      for (const poly of d.polys) {
+        // Leave the tiny Northwestern Hawaiian Islands off the drawing (they still count for lookups).
+        if (poly[0][0][1] < 30 && poly[0][0][0] < -161 && poly[0][0][0] > -180) continue;
+        for (const ring of poly) {
+          ring.forEach((c, i) => {
+            const [x, y] = proj(c[0], c[1]); grow(wb, x, y);
+            path += (i ? "L" : "M") + x.toFixed(4) + " " + y.toFixed(4);
+          });
+          path += "Z";
+        }
+      }
+      const p = el("path", { d: path }, layers.land);
+      const t = el("title", {}, p); t.textContent = d.see + (d.ordinary ? " — " + d.ordinary : " — sede vacante");
+      d._path = p; d._wb = wb;
+      const lp = labelPoint(d);
+      d._label = proj(...lp);
+      for (const a of INSETS) if (a.test(...lp)) { a.box = a.box || [Infinity, Infinity, -Infinity, -Infinity]; grow(a.box, wb[0], wb[1]); grow(a.box, wb[2], wb[3]); }
+    }
+    for (const a of INSETS) {
+      if (!a.box) continue;
+      const m = a.name === "Alaska" ? 0.5 : 0.35;
+      a.box = [a.box[0] - m, a.box[1] - m - 0.6, a.box[2] + m, a.box[3] + m];   // room for the name at the top
+      if (a.minW && a.box[2] - a.box[0] < a.minW) { const c = (a.box[0] + a.box[2]) / 2; a.box[0] = c - a.minW / 2; a.box[2] = c + a.minW / 2; }
+      el("rect", { x: a.box[0], y: a.box[1], width: a.box[2] - a.box[0], height: a.box[3] - a.box[1], class: "inset" }, layers.frames);
+    }
+    const all = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const d of D.dioceses) { grow(all, d._wb[0], d._wb[1]); grow(all, d._wb[2], d._wb[3]); }
+    for (const a of INSETS) if (a.box) { grow(all, a.box[0], a.box[1]); grow(all, a.box[2], a.box[3]); }
+    USA = all;
+    layers.labels = el("g", {}, svg);
+    layers.marks = el("g", {}, svg);
+  }
+
+  function size() { return [svg.clientWidth || 600, svg.clientHeight || 400]; }
+  function applyView() {
+    const [W, H] = size();
+    view.s = Math.min(MAX_S, Math.max(MIN_S, view.s));
+    svg.setAttribute("viewBox", `${view.cx - W * view.s / 2} ${view.cy - H * view.s / 2} ${W * view.s} ${H * view.s}`);
+  }
+  function fitBox(b, pad = 0.08) {      // b = [x0, y0, x1, y1] in world units
+    const [W, H] = size(), R = 62;     // keep a strip on the right clear for the + − ⊙ buttons
+    const w = b[2] - b[0], h = b[3] - b[1];
+    view.s = Math.max(w / (W - R), h / H) * (1 + 2 * pad);
+    view.cx = (b[0] + b[2]) / 2 + R / 2 * view.s; view.cy = (b[1] + b[3]) / 2;
+    applyView(); refreshOverlays();
+  }
+  const toWorld = (clientX, clientY) => {
+    const r = svg.getBoundingClientRect(), [W, H] = size();
+    return [view.cx + (clientX - r.left - W / 2) * view.s, view.cy + (clientY - r.top - H / 2) * view.s];
+  };
+  function zoomAt(factor, clientX, clientY) {
+    const r = svg.getBoundingClientRect();
+    if (clientX == null) { clientX = r.left + r.width / 2; clientY = r.top + r.height / 2; }
+    const [x0, y0] = toWorld(clientX, clientY);
+    view.s = Math.min(MAX_S, Math.max(MIN_S, view.s / factor));
+    const [x1, y1] = toWorld(clientX, clientY);
+    view.cx += x0 - x1; view.cy += y0 - y1;
+    applyView(); scheduleOverlays();
+  }
+
+  // Names, pin and cathedral marks are sized in screen pixels, so they are redrawn after each move.
+  let ovTimer;
+  function scheduleOverlays() { clearTimeout(ovTimer); ovTimer = setTimeout(refreshOverlays, 90); }
+  function refreshOverlays() {
+    if (!layers.labels) return;
+    const [W, H] = size(), s = view.s;
+    const vx0 = view.cx - W * s / 2, vy0 = view.cy - H * s / 2, vx1 = vx0 + W * s, vy1 = vy0 + H * s;
+    const inView = (x, y, m = 0) => x > vx0 - m && x < vx1 + m && y > vy0 - m && y < vy1 + m;
+    layers.labels.replaceChildren(); layers.marks.replaceChildren();
+    const taken = [];   // simple collision check, in screen pixels
+    const fits = (x, y, w, h) => {
+      const bx = [(x - vx0) / s - w / 2, (y - vy0) / s - h, w, h];
+      if (taken.some(t => bx[0] < t[0] + t[2] && t[0] < bx[0] + bx[2] && bx[1] < t[1] + t[3] && t[1] < bx[1] + bx[3])) return false;
+      taken.push(bx); return true;
+    };
+    const fsz = Math.min(W, 700) < 500 ? 13 : 14;
+    // diocese names, when the diocese is big enough on screen to hold one
+    for (const a of INSETS) if (a.box && inView(a.box[0], a.box[1], (vx1 - vx0))) {
+      const t = el("text", { x: a.box[0] + 6 * s, y: a.box[1] + 15 * s, "font-size": 13 * s, class: "inset-label" }, layers.labels);
+      t.textContent = a.short && a.name.length * 8 > (a.box[2] - a.box[0]) / s ? a.short : a.name;
+    }
+    for (const d of D.dioceses) {
+      const [x, y] = d._label;
+      if (!inView(x, y)) continue;
+      const name = d === cur.sel ? "" : shortName(d);
+      if (!name) continue;
+      const wpx = (d._wb[2] - d._wb[0]) / s;
+      const tw = name.length * fsz * 0.5;
+      if (wpx < tw * 0.9) continue;
+      if (!fits(x, y, tw, fsz + 4)) continue;
+      const t = el("text", { x, y, "text-anchor": "middle", "font-size": fsz * s, class: "dio-label" }, layers.labels);
+      t.textContent = name;
+    }
+    // towns, once zoomed in to roughly county level: the biggest ones in view first
+    if (s < 0.006) {
+      const minPop = s > 0.003 ? 20000 : s > 0.0018 ? 5000 : s > 0.0011 ? 1000 : 0;
+      const cand = [];
+      for (const it of buildIndex().items) {
+        if (it.county || it.pop < minPop || (it.rank === 2 && s > 0.0008)) continue;   // unincorporated places only when close in
+        const [x, y] = proj(it.lon, it.lat);
+        if (inView(x, y)) cand.push([it, x, y]);
+      }
+      cand.sort((a, b) => b[0].pop - a[0].pop || b[0].size - a[0].size);
+      let n = 0;
+      for (const [it, x, y] of cand) {
+        if (n >= 45) break;
+        const tsz = 13, tw = it.n.length * tsz * 0.48 + 8;
+        if (!fits(x, y + 6 * s, tw, tsz + 8)) continue;
+        el("circle", { cx: x, cy: y, r: 2.6 * s, class: "town-dot" }, layers.labels);
+        const t = el("text", { x, y: y - 5 * s, "text-anchor": "middle", "font-size": tsz * s, "font-style": "italic", class: "town" }, layers.labels);
+        t.textContent = it.n; n++;
+      }
+    }
+    if (cur.sel) for (const c of cur.sel.cathedrals) {
+      const [x, y] = proj(c.lon, c.lat);
+      const g = el("text", { x, y: y + 6 * s, "text-anchor": "middle", "font-size": 19 * s, class: "cath" }, layers.marks);
+      g.style.fill = "var(--gold)"; g.textContent = "✠";
+    }
+    if (cur.point) { const [x, y] = proj(cur.point[1], cur.point[0]); el("circle", { cx: x, cy: y, r: 7 * s, class: "pin" }, layers.marks); }
+  }
+
+  function drawMap(sel, point, keepView) {
+    buildMap();
+    if (cur.sel && cur.sel._path) cur.sel._path.removeAttribute("class");
+    cur = { sel, point };
     if (sel) {
-      const pad = Math.max(sel.bbox[2] - sel.bbox[0], sel.bbox[3] - sel.bbox[1]) * 0.35 + 0.3;
-      b = [sel.bbox[0] - pad, sel.bbox[1] - pad * 0.6, sel.bbox[2] + pad, sel.bbox[3] + pad * 0.6];
+      sel._path.setAttribute("class", "sel");
+      layers.land.appendChild(sel._path); // on top, so its red outline isn't hidden
       $("map-caption").textContent = "The " + sel.see + " and its neighbors";
     } else {
-      b = USA;
-      $("map-caption").textContent = "The United States (lower 48)";
+      $("map-caption").textContent = "The United States";
     }
-    setView(b, !sel); // whole-country view: no empty space above and below
-    svg.replaceChildren();
-    const shown = D.dioceses.filter(d => overlaps(d.bbox, b));
-    for (const d of shown) {
-      const p = document.createElementNS(NS, "path");
-      p.setAttribute("d", pathFor(d));
-      if (d === sel) p.setAttribute("class", "sel");
-      const t = document.createElementNS(NS, "title");
-      t.textContent = d.see + (d.ordinary ? " — " + d.ordinary : " — sede vacante");
-      p.appendChild(t);
-      svg.appendChild(p);
-    }
+    if (keepView) { refreshOverlays(); return; }   // a click on the map: don't jump away from where you are
     if (sel) {
-      // label neighbours at the centre of their bbox, clipped to view
-      for (const d of shown) {
-        if (d === sel) continue;
-        const cx = (Math.max(d.bbox[0], b[0]) + Math.min(d.bbox[2], b[2])) / 2;
-        const cy = (Math.max(d.bbox[1], b[1]) + Math.min(d.bbox[3], b[3])) / 2;
-        if (!contains(d, cx, cy)) continue;
-        let [x, y] = px(cx, cy);
-        const half = shortName(d).length * 14 * view.u * 0.25 + 4 * view.u; // keep labels inside the frame
-        x = Math.min(Math.max(x, half), view.W - half);
-        const t = document.createElementNS(NS, "text");
-        t.setAttribute("x", x); t.setAttribute("y", y); t.setAttribute("text-anchor", "middle"); t.setAttribute("font-size", (14 * view.u).toFixed(1));
-        t.textContent = shortName(d);
-        svg.appendChild(t);
-      }
-      for (const c of sel.cathedrals) {
-        const [x, y] = px(c.lon, c.lat);
-        const g = document.createElementNS(NS, "text");
-        g.setAttribute("x", x); g.setAttribute("y", y + 6 * view.u); g.setAttribute("text-anchor", "middle");
-        g.setAttribute("font-size", (19 * view.u).toFixed(1)); g.setAttribute("class", "cath"); g.style.fill = "var(--gold)";
-        g.textContent = "✠";
-        svg.appendChild(g);
-      }
-    }
-    if (point) {
-      const [x, y] = px(point[1], point[0]);
-      const c = document.createElementNS(NS, "circle");
-      c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", (7 * view.u).toFixed(1)); c.setAttribute("class", "pin");
-      svg.appendChild(c);
-    }
+      const b = sel._wb, pad = Math.max(b[2] - b[0], b[3] - b[1]) * 0.3 + 0.2;
+      fitBox([b[0] - pad, b[1] - pad * 0.6, b[2] + pad, b[3] + pad * 0.6], 0.02);
+    } else fitBox(USA, 0.02);
   }
-  // Redraw when the phone rotates or the window is resized.
-  let rz;
-  window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => drawMap(...lastDraw), 150); });
+  function recenter() { drawMap(cur.sel, cur.point); }
 
+  let rz;
+  window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { applyView(); refreshOverlays(); }, 150); });
+
+  // --- hint overlay ("Use two fingers…")
+  let hintT;
+  function hint(msg) { const h = $("maphint"); h.textContent = msg; h.classList.add("on"); clearTimeout(hintT); hintT = setTimeout(() => h.classList.remove("on"), 1400); }
+
+  // --- choosing a point (a click or tap that didn't move the map)
+  let suppressClick = false;
   svg.addEventListener("click", e => {
-    const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
-    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
-    const [lat, lon] = unpx(p.x, p.y);
-    resolvePoint(lat, lon, "map click");
+    if (suppressClick) { suppressClick = false; return; }
+    const [lon, lat] = unproj(...toWorld(e.clientX, e.clientY));
+    resolvePoint(lat, lon, "map click", { keepView: true });
     $("hint").textContent = "Point chosen on the map.";
   });
-  $("btn-usa").addEventListener("click", () => drawMap(null, null));
+
+  // --- mouse: drag to move, ⌘/Ctrl + scroll or trackpad pinch to zoom, double-click to zoom in
+  let drag = null;
+  svg.addEventListener("pointerdown", e => {
+    if (e.pointerType !== "mouse" || e.button !== 0) return;
+    drag = { x: e.clientX, y: e.clientY, cx: view.cx, cy: view.cy, moved: false };
+    svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener("pointermove", e => {
+    if (!drag || e.pointerType !== "mouse") return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+    drag.moved = true; svg.classList.add("dragging");
+    view.cx = drag.cx - dx * view.s; view.cy = drag.cy - dy * view.s; applyView();
+  });
+  const endDrag = () => { if (drag && drag.moved) { suppressClick = true; setTimeout(() => suppressClick = false, 0); scheduleOverlays(); } drag = null; svg.classList.remove("dragging"); };
+  svg.addEventListener("pointerup", endDrag);
+  svg.addEventListener("pointercancel", endDrag);
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  svg.addEventListener("wheel", e => {
+    if (e.ctrlKey || e.metaKey) {                  // trackpad pinch arrives as ctrl+wheel
+      e.preventDefault();
+      zoomAt(Math.exp(-Math.max(-50, Math.min(50, e.deltaY)) * 0.01), e.clientX, e.clientY);   // ≤1.65× per wheel notch
+    } else if (Math.abs(e.deltaY) > 2) {
+      hint(isMac ? "Use ⌘ + scroll to zoom the map" : "Use Ctrl + scroll to zoom the map");
+    }
+  }, { passive: false });
+  svg.addEventListener("dblclick", e => { e.preventDefault(); zoomAt(2, e.clientX, e.clientY); });
+
+  // --- touch: one finger scrolls the page; two fingers move and pinch the map
+  let tp = null, oneMoved = false, lastTap = 0;
+  const mid = t => [(t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2];
+  const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  svg.addEventListener("touchstart", e => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const [mx, my] = mid(e.touches);
+      tp = { mx, my, d: dist(e.touches), cx: view.cx, cy: view.cy, s: view.s, world: toWorld(mx, my) };
+    } else if (e.touches.length === 1) { oneMoved = false; tp = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }
+  }, { passive: false });
+  svg.addEventListener("touchmove", e => {
+    if (e.touches.length === 2 && tp && tp.d) {
+      e.preventDefault();
+      const [mx, my] = mid(e.touches), r = svg.getBoundingClientRect(), [W, H] = size();
+      view.s = Math.min(MAX_S, Math.max(MIN_S, tp.s * tp.d / Math.max(1, dist(e.touches))));
+      // keep the world point that started under the fingers under the fingers
+      view.cx = tp.world[0] - (mx - r.left - W / 2) * view.s;
+      view.cy = tp.world[1] - (my - r.top - H / 2) * view.s;
+      applyView(); suppressClick = true;
+    } else if (e.touches.length === 1 && tp && tp.x != null) {
+      if (!oneMoved && Math.hypot(e.touches[0].clientX - tp.x, e.touches[0].clientY - tp.y) > 10) { oneMoved = true; hint("Use two fingers to move the map"); }
+    }
+  }, { passive: false });
+  svg.addEventListener("touchend", e => {
+    if (tp && tp.d) { scheduleOverlays(); if (e.touches.length === 0) setTimeout(() => suppressClick = false, 350); }
+    if (e.touches.length === 0 && tp && tp.x != null && !oneMoved) {
+      const now = Date.now();
+      if (now - lastTap < 320) { e.preventDefault(); zoomAt(2, tp.x, tp.y); suppressClick = true; setTimeout(() => suppressClick = false, 350); lastTap = 0; }
+      else lastTap = now;
+    }
+    if (e.touches.length === 0) tp = null;
+  });
+
+  $("z-in").addEventListener("click", () => zoomAt(2));
+  $("z-out").addEventListener("click", () => zoomAt(0.5));
+  $("z-fit").addEventListener("click", recenter);
+  $("btn-usa").addEventListener("click", () => fitBox(USA, 0.02));
 
   // ---------- modes ----------
   document.querySelectorAll(".pill").forEach(p => p.addEventListener("click", e => {
@@ -470,7 +684,8 @@ footer p { margin: 4px 0; }
     document.querySelectorAll(".panel").forEach(q => q.classList.toggle("on", q.id === "panel-" + p.dataset.mode));
     $("hint").textContent = "";
     store.set("mode", p.dataset.mode);
-    if (p.dataset.mode === "place" && e.isTrusted) setTimeout(() => $("in-place").focus(), 0);
+    if (e.isTrusted && p.dataset.mode === "place") setTimeout(() => $("in-place").focus(), 0);
+    if (e.isTrusted && p.dataset.mode === "coords") setTimeout(() => $("in-coords").focus(), 0);
   }));
 
   // geolocation
@@ -666,7 +881,7 @@ footer p { margin: 4px 0; }
   } else {
     drawMap(null, null);
   }
-  window.__finder = { lookup, nearbyBorders, resolvePoint };
+  window.__finder = { lookup, nearbyBorders, resolvePoint, proj };
 
   // When served from a web address, keep a copy on the device so it opens with no signal.
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
